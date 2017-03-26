@@ -108,9 +108,10 @@ class GradBoost:
     def __init__(self, base_learner, base_learners_count, loss=None, fit_coefs=True,
                  refit_tree=True, shrinkage=1, max_fun_evals=200, xtol=10 ** -6,
                  ftol=10 ** -6, log_level=0,
-                 max_features_in_subset=3,
+                 max_features_in_subset='log',
                  samples_fraction=0.75,
                  rotation_func=pca_rotation,
+                 enable_weighted_rotation=False,
                  random_state=None):
         self.base_learners_count = base_learners_count
         self.base_learner = base_learner
@@ -120,9 +121,22 @@ class GradBoost:
         self.refit_tree = refit_tree
         self.optimization = Struct(max_fun_evals=max_fun_evals, xtol=xtol, ftol=ftol)
 
-        self.max_features_in_subset = max_features_in_subset
+        if max_features_in_subset == 'log':
+            self.max_features_in_subset = lambda x: int( np.log2(x) )
+        elif max_features_in_subset == 'sqrt':
+            self.max_features_in_subset = lambda x: int( np.sqrt(x) )
+        elif max_features_in_subset == 'identity':
+            self.max_features_in_subset = lambda x: x
+        elif max_features_in_subset == 'div2':
+            self.max_features_in_subset = lambda x: int( x / 2 )
+        elif isinstance(max_features_in_subset, int):
+            self.max_features_in_subset = lambda x: max_features_in_subset
+        else:
+            raise ValueError( 'Unknown function: {}'.format(max_features_in_subset) )
+
         self.samples_fraction = samples_fraction
         self.rotation_func = rotation_func
+        self.enable_weighted_rotation = enable_weighted_rotation
         self.random_state=random_state
 
         self.coefs = []
@@ -206,14 +220,29 @@ class GradBoost:
 
             rot_matrix = np.zeros((D, D), dtype=np.float32)
 
+            if self.enable_weighted_rotation:
+                weights = np.abs(z)
+                weights /= np.sum(weights)
+
             index_gen = IndexGenerator(X.shape,
-                                       self.max_features_in_subset,
+                                       self.max_features_in_subset(D),
                                        self.samples_fraction,
                                        random_state.randint(MAX_INT))
 
             for row_inds, col_inds in index_gen:
                 Xi = X[row_inds[:, None], col_inds[None, :]]
+
+                if self.enable_weighted_rotation:
+                    Xi *= np.sqrt(weights[row_inds, None])
+
                 Xi_components = self.rotation_func(Xi)
+
+                di = col_inds.shape[0]
+                di_hat = Xi_components.shape[1]
+
+                Xi_components = np.pad(Xi_components,
+                                       pad_width=((0, 0), (0, di - di_hat)),
+                                       mode='constant')
 
                 rot_matrix[col_inds[:, None], col_inds[None, :]] = Xi_components
 
@@ -271,7 +300,7 @@ class GradBoost:
 
             F_current += coef * base_pred
             if X_val is not None and y_val is not None:
-                F_val += coef * base_learner.predict(X_val)
+                F_val += coef * base_learner.predict(X_val.dot(rot_matrix))
 
     def F(self, X, max_base_learners_count=np.inf):
         """
@@ -293,11 +322,40 @@ class GradBoost:
 
         return F_val
 
+    def staged_F(self, X, max_base_learners_count=np.inf):
+        """
+        Function-generator using to compute a value of F for all possible ensemble sizes:
+        from 1 to base_learners_count
+
+        """
+        F_val = np.zeros(len(X))
+
+        for iter_num, (coef, base_learner, rot_matrix) in enumerate(
+                zip(self.coefs, self.base_learners, self.rot_matrices)):
+            XR = X.dot(rot_matrix)
+
+            base_pred = base_learner.predict(XR)
+            F_val += coef * base_pred
+
+            yield F_val
+
+            if iter_num + 1 >= max_base_learners_count:
+                break
+
     def predict(self, X, base_learners_count=np.inf):
         if self.task == 'regression':
             return self.F(X, base_learners_count)
         else:  # classification
             return np.int32(self.F(X, base_learners_count) >= 0)  # F(X)>=0 = > predition=1 otherwise prediction=0
+
+    def staged_predict(self, X, base_learners_count=np.inf):
+
+        for F_val in self.staged_F(X, base_learners_count):
+
+            if self.task == 'regression':
+                yield F_val
+            else:  # classification
+                yield np.int32(F_val >= 0)
 
     def predict_proba(self, X, base_learners_count=np.inf):
         """
