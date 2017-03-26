@@ -88,9 +88,14 @@ class GradBoost:
         logger messages will be shown.
 
     Extra Params:
-        - max_features_in_subset (int): A maximum size of random feature subsets
+        - max_features_in_subset (str or int): A maximum size of random feature subsets. If int
+         then specifies the actual size of subsets, if str then specifies function name
+         which will be used to compute the size of subsets based on a number of features
+         in a data set (now supported: 'log' - the base two logarithm, 'sqrt' - the square root,
+          'div2' - the division by 2, 'identity' - all features in one subset)
         - samples_fraction (float): A fraction of  samples to draw for each classifier
         - rotation_func (callable): Function-extractor, applied to the design matrix on each step
+        - enable_weighted_rotation (boolean): Whether use weights for rotation or not
 
     Comments:
         - Univarite regression predictions are made for loss="square".
