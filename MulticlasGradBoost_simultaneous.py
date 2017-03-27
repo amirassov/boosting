@@ -35,7 +35,7 @@ class GradBoost:
         - For loss="log" not only classes can be predicted (with predict function) but also class probabilities (with predict_proba function)
         - Zero-th approximation is zero. Higher order approximations are sums of base learners with coefficients.
     Author: 
-        Victor Kitov, 03.2016.'''
+        Victor Kitov, Sergey Nikolaev.'''
 
     def __init__(self, base_learner, base_learners_count, loss=None, fit_coefs=True, refit_tree=True, 
                  shrinkage=1, max_fun_evals=200, xtol=10**-6, ftol=10**-6, log_level=0):
