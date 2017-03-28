@@ -60,6 +60,7 @@ class GradBoost:
                  samples_fraction=0.75,
                  rotation_func=pca_rotation,
                  enable_weighted_rotation=False,
+                 sample_weights=None,
                  random_state=None):
         self.base_learners_count = base_learners_count
         self.base_learner = base_learner
@@ -85,6 +86,12 @@ class GradBoost:
         self.samples_fraction = samples_fraction
         self.rotation_func = rotation_func
         self.enable_weighted_rotation = enable_weighted_rotation
+        self.sample_weights = sample_weights
+
+        if self.enable_weighted_rotation:
+            if not self.sample_weights or self.sample_weights not in ['grad', 'loss']:
+                raise ValueError( "sample_weights must be set to 'grad' or 'loss'" )
+
         self.random_state=random_state
 
         self.coefs = []
@@ -169,7 +176,12 @@ class GradBoost:
             rot_matrix = np.zeros((D, D), dtype=np.float32)
 
             if self.enable_weighted_rotation:
-                weights = np.abs(z)
+                if self.sample_weights == 'grad':
+                    weights = np.abs(z)
+                elif self.sample_weights == 'loss':
+                    z = self.loss(F_current, y)
+                    weights = np.abs(z)
+
                 weights /= np.sum(weights)
 
             index_gen = IndexGenerator(X.shape,

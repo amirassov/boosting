@@ -13,15 +13,16 @@ class RotationAdaBoost(BaseEstimator):
                  base_learner,
                  base_learners_count,
                  max_features_in_subset='log',
+                 enable_weighted_rotation=False,
                  samples_fraction=0.75,
                  rotation_func=pca_rotation,
-                 learning_rate=0.1,
+                 shrinkage=0.1,
                  verbose=0,
                  random_state=None):
 
         self.base_learner = base_learner
         self.base_learners_count = base_learners_count
-        self.learning_rate = learning_rate
+        self.shrinkage = shrinkage
 
         if max_features_in_subset == 'log':
             self.max_features_in_subset = lambda x: int( np.log2(x) )
@@ -36,6 +37,7 @@ class RotationAdaBoost(BaseEstimator):
         else:
             raise ValueError( 'Unknown function: {}'.format(max_features_in_subset) )
 
+        self.enable_weighted_rotation = enable_weighted_rotation,
         self.samples_fraction = samples_fraction
         self.rotation_func = rotation_func
         self.random_state = random_state
@@ -44,14 +46,17 @@ class RotationAdaBoost(BaseEstimator):
     def fit(self, X, y):
         self.n_samples_, self.n_features_ = X.shape
 
+        X = X.astype(np.float32)
+        y = y.astype(np.float32)
+
         # Check parameters
-        if self.learning_rate <= 0:
+        if self.shrinkage <= 0:
             raise ValueError("learning_rate must be greater than zero")
 
-        if self.max_features_in_subset > self.n_features_:
+        if self.max_features_in_subset(self.n_features_) > self.n_features_:
             raise ValueError("max_features_in_subset=%d must be smaller or equal than"
                              " n_features=%d"
-                             % (self.max_features_in_subset, self.n_features_))
+                             % (self.max_features_in_subset(self.n_features_), self.n_features_))
 
         random_state = np.random.RandomState(seed=self.random_state)
 
@@ -93,7 +98,9 @@ class RotationAdaBoost(BaseEstimator):
 
         for row_inds, col_inds in index_gen:
             Xi = X[row_inds[:, None], col_inds[None, :]]
-            Xi *= np.sqrt(sample_weight[row_inds, None])
+
+            if self.enable_weighted_rotation:
+                Xi *= np.sqrt(sample_weight[row_inds, None])
 
             Xi_components = self.rotation_func(Xi)
 
@@ -129,7 +136,7 @@ class RotationAdaBoost(BaseEstimator):
 
         n_classes = self.n_classes_
 
-        estimator_weight = self.learning_rate * (
+        estimator_weight = self.shrinkage * (
             np.log((1. - estimator_error) / estimator_error) +
             np.log(n_classes - 1.))
 
