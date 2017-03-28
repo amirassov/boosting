@@ -6,6 +6,7 @@ import sklearn as skl
 import scipy
 
 class MulticlassGradBoost:
+	'''Author: Konstantin Kozlovtsev.'''
     def __init__(self, base_learner, base_learners_count, loss=None,
                  fit_coefs=True, refit_tree=True, shrinkage=1, max_fun_evals=200, xtol=10**-6, ftol=10**-6, log_level=0):
         self.base_learners_count = base_learners_count
