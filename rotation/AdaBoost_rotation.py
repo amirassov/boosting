@@ -104,6 +104,13 @@ class RotationAdaBoost(BaseEstimator):
 
             Xi_components = self.rotation_func(Xi)
 
+            di = col_inds.shape[0]
+            di_hat = Xi_components.shape[1]
+
+            Xi_components = np.pad(Xi_components,
+                                   pad_width=((0, 0), (0, di - di_hat)),
+                                   mode='constant')
+
             rot_matrix[col_inds[:, None], col_inds[None, :]] = Xi_components
 
         return rot_matrix
